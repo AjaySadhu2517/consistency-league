@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Consistency League Login</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase.js"></script>
+
+<style>
+body{
+ background:url('bg.jpg') center/cover fixed;
+ font-family:Segoe UI;
+ color:white;
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ height:100vh;
+}
+.box{
+ background:rgba(0,0,0,0.7);
+ padding:30px;
+ border:2px solid cyan;
+ border-radius:12px;
+ width:320px;
+}
+input,button{
+ width:100%;
+ padding:10px;
+ margin:8px 0;
+}
+button{
+ background:cyan;
+ border:none;
+ cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div class="box">
+<h2>Consistency League</h2>
+
+<input id="name" placeholder="Your Name">
+<input id="email" placeholder="Email">
+<input id="pass" placeholder="Password" type="password">
+
+<button onclick="signup()">Signup</button>
+<button onclick="login()">Login</button>
+</div>
+
+<script>
+function signup(){
+ let name=document.getElementById("name").value;
+ let email=document.getElementById("email").value;
+ let pass=document.getElementById("pass").value;
+
+ auth.createUserWithEmailAndPassword(email,pass).then(res=>{
+   let uid=res.user.uid;
+
+   db.collection("users").doc(uid).set({
+     name:name,
+     piggy:0,
+     streak:0,
+     dailyScore:0,
+     signupDate:new Date().toISOString()
+   });
+
+   // EMPTY TASKS (User will add manually)
+   db.collection("userTasks").doc(uid).set({
+     tasks:[]
+   });
+
+   alert("Signup Success! Now Login & Add Your Tasks");
+ });
+}
+
+function login(){
+ let email=document.getElementById("email").value;
+ let pass=document.getElementById("pass").value;
+
+ auth.signInWithEmailAndPassword(email,pass).then(()=>{
+   location.href="dashboard.html";
+ });
+}
+</script>
+
+</body>
+</html>

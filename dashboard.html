@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Consistency League Arena</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="firebase.js"></script>
+
+<style>
+body{
+ background:url('cyber.jpg') center/cover fixed;
+ font-family:'Segoe UI',sans-serif;
+ color:white;
+ margin:0;
+}
+.main{display:flex;height:100vh;}
+.left{width:70%;padding:15px;}
+.right{width:30%;padding:15px;background:rgba(0,0,0,0.7);}
+
+h2{margin-top:0;color:cyan;}
+
+.tableWrap{
+ height:65vh;
+ overflow-y:auto;
+ border:1px solid cyan;
+ background:rgba(0,0,0,0.6);
+}
+
+table{width:100%;border-collapse:collapse;}
+th,td{border:1px solid cyan;padding:6px;text-align:center;}
+thead{position:sticky;top:0;background:black;}
+
+input[type=checkbox]{width:18px;height:18px;}
+
+.topBar{display:flex;gap:10px;margin-bottom:10px;}
+#newTask{flex:1;padding:8px;}
+#addTaskBtn{background:cyan;border:none;padding:8px 15px;cursor:pointer;}
+
+.submitBar{
+ position:fixed;
+ bottom:10px;
+ left:20px;
+ display:flex;
+ gap:10px;
+}
+
+.panel{
+ border:1px solid cyan;
+ padding:10px;
+ margin-bottom:10px;
+ border-radius:8px;
+}
+
+button{
+ background:cyan;
+ border:none;
+ padding:8px 15px;
+ border-radius:6px;
+ cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div class="main">
+
+<div class="left">
+<h2>⚔️ Consistency League Arena</h2>
+
+<div class="topBar">
+<input id="newTask" placeholder="Add Task">
+<button id="addTaskBtn" onclick="addTask()">Add Task</button>
+</div>
+
+<div class="tableWrap">
+<table>
+<thead><tr id="headRow"></tr></thead>
+<tbody id="bodyRows"></tbody>
+</table>
+</div>
+
+</div>
+
+<div class="right">
+<div class="panel">🐷 Piggy: ₹<span id="piggy">0</span></div>
+<div class="panel">🔥 Streak: <span id="streak">0</span></div>
+
+<div class="panel">
+🏁 Leaderboard Race
+<div id="leaderboard"></div>
+</div>
+
+<div class="panel">
+📊 Score Graph
+<canvas id="scoreChart" height="180"></canvas>
+</div>
+
+<button onclick="logout()">Logout</button>
+</div>
+
+</div>
+
+<div class="submitBar">
+<button onclick="submitToday()">Submit Today</button>
+</div>
+
+<script>
+let tasks=[];
+let scoreChart;
+
+// Local date function
+function getLocalDate(){
+ let d = new Date();
+ return new Date(d.getTime() - d.getTimezoneOffset()*60000)
+        .toISOString().slice(0,10);
+}
+
+// Auth
+auth.onAuthStateChanged(u=>{
+ if(!u) location.href="index.html";
+ loadData();
+});
+
+// Load Data
+function loadData(){
+ let uid=auth.currentUser.uid;
+
+ db.collection("userTasks").doc(uid).get().then(d=>{
+   if(d.exists) tasks=d.data().tasks || [];
+   else tasks=[];
+   buildTable();
+ });
+
+ db.collection("users").doc(uid).onSnapshot(d=>{
+   if(d.exists){
+     piggy.innerText=d.data().piggy || 0;
+     streak.innerText=d.data().streak || 0;
+   }
+ });
+
+ loadLeaderboard();
+}
+
+// Build 90 Day Table
+function buildTable(){
+ headRow.innerHTML="<th>Day</th>";
+ tasks.forEach(t=>headRow.innerHTML+=`<th>${t}</th>`);
+
+ bodyRows.innerHTML="";
+ let startDate = new Date(auth.currentUser.metadata.creationTime);
+
+ for(let i=0;i<90;i++){
+   let date=new Date(startDate);
+   date.setDate(date.getDate()+i);
+   let d=date.toISOString().slice(0,10);
+   let today=getLocalDate();
+
+   let tr=document.createElement("tr");
+   tr.innerHTML=`<td>${d}</td>`;
+
+   tasks.forEach((t,j)=>{
+     let disabled = (d==today) ? "" : "disabled";
+     tr.innerHTML+=`<td><input type="checkbox" id="${d}_${j}" ${disabled}></td>`;
+   });
+
+   bodyRows.appendChild(tr);
+ }
+ loadSavedChecks();
+}
+
+// Load Saved Checks
+function loadSavedChecks(){
+ let uid=auth.currentUser.uid;
+ db.collection("dailyLogs").where("uid","==",uid).get().then(res=>{
+   res.forEach(doc=>{
+     let data=doc.data();
+     if(data.checks){
+       Object.keys(data.checks).forEach(id=>{
+         let cb=document.getElementById(id);
+         if(cb){
+           cb.checked=data.checks[id];
+           cb.disabled=true;
+         }
+       });
+     }
+   });
+ });
+}
+
+// Add Task
+function addTask(){
+ let name=newTask.value.trim();
+ if(!name) return;
+ let uid=auth.currentUser.uid;
+
+ db.collection("userTasks").doc(uid).set({
+   tasks:firebase.firestore.FieldValue.arrayUnion(name)
+ },{merge:true}).then(()=>{
+   newTask.value="";
+   loadData();
+ });
+}
+
+// Submit Today
+function submitToday(){
+ let today=getLocalDate();
+ let uid=auth.currentUser.uid;
+ let key=uid+"_"+today;
+
+ db.collection("dailyLogs").doc(key).get().then(doc=>{
+   if(doc.exists){ alert("Already Submitted Today"); return; }
+
+   let done=0;
+   let checks={};
+
+   tasks.forEach((t,i)=>{
+     let id=today+"_"+i;
+     let cb=document.getElementById(id);
+     if(cb && cb.checked) done++;
+     if(cb){
+       checks[id]=cb.checked;
+       cb.disabled=true;
+     }
+   });
+
+   let allDone = (done==tasks.length && tasks.length>0);
+   let dailyScore = Math.round((done/tasks.length)*100);
+
+   let updates={
+     dailyScore: dailyScore,
+     totalScore: firebase.firestore.FieldValue.increment(dailyScore)
+   };
+
+   if(done>0) updates.streak = firebase.firestore.FieldValue.increment(1);
+   if(allDone) updates.piggy = firebase.firestore.FieldValue.increment(1);
+
+   db.collection("users").doc(uid).update(updates);
+   db.collection("dailyLogs").doc(key).set({uid,done,allDone,checks,dailyScore});
+
+   alert("Submitted!");
+ });
+}
+
+// LEADERBOARD (FIXED SORT)
+function loadLeaderboard(){
+ db.collection("users").onSnapshot(res=>{
+   let arr=[];
+
+   res.forEach(d=>{
+     let u=d.data();
+     let score = parseInt(u.totalScore || 0); // FORCE NUMBER
+     arr.push({name:u.name || "User", score});
+   });
+
+   // SORT DESCENDING
+   arr.sort((a,b)=>b.score - a.score);
+
+   // Display Leaderboard
+   leaderboard.innerHTML="";
+   arr.forEach((u,i)=>{
+     let emoji="🚶";
+     if(i==0) emoji="👑";
+     else if(i==arr.length-1) emoji="🤡";
+     leaderboard.innerHTML += `${emoji} ${u.name} (${u.score})<br>`;
+   });
+
+   drawGraph(arr);
+ });
+}
+
+// Graph
+function drawGraph(arr){
+ let names=arr.map(x=>x.name);
+ let scores=arr.map(x=>x.score);
+ let ctx=document.getElementById("scoreChart");
+
+ if(scoreChart) scoreChart.destroy();
+
+ scoreChart=new Chart(ctx,{
+   type:"bar",
+   data:{
+     labels:names,
+     datasets:[{
+       label:"Total Score",
+       data:scores,
+       backgroundColor:"cyan"
+     }]
+   },
+   options:{
+     responsive:true,
+     scales:{ y:{beginAtZero:true} }
+   }
+ });
+}
+
+// Logout
+function logout(){
+ auth.signOut();
+ location.href="index.html";
+}
+</script>
+
+</body>
+</html>
